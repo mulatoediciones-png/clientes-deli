@@ -104,6 +104,9 @@
   .nota.mkt b{color:var(--naranja-osc)}
   .nota.vta{background:var(--azul-suave);color:var(--tinta)}
   .nota.vta b{color:var(--azul-osc)}
+  .nota.compro{background:#E9F6EE}
+  .nota.compro b{color:var(--verde)}
+  .nota.compro .prods{margin:4px 0 2px}
   .acciones{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
   .acciones select{width:auto;padding:7px 10px;font-size:13px}
   .seg{font-size:12px;font-weight:600}
@@ -251,9 +254,6 @@
         <div><label>Red por la que escribió *</label><select name="red" required></select></div>
         <div><label>Estado *</label><select name="estado" required onchange="avisoZona()"></select><small class="ayuda" id="avisoZona" style="display:block;margin-top:4px;color:var(--gris);font-size:12px"></small></div>
         <div class="full"><label>Ciudad / zona</label><input name="ciudad"></div>
-        <div class="full"><label>Productos de interés</label><div class="checks" id="productos"></div></div>
-        <div><label>Volumen estimado <small>(ej. 20 bultos por semana)</small></label><input name="volumen"></div>
-        <div><label>Cargado por</label><input name="cargado_por" placeholder="Tu nombre"></div>
         <div class="full"><label>Nota para el vendedor</label><textarea name="notas" placeholder="Qué preguntó, qué le interesa, mejor hora para llamar…"></textarea></div>
       </div>
       <div class="pie">
@@ -298,6 +298,8 @@
         <div><label>Estatus</label><select name="estatus"></select></div>
         <div><label>Próximo seguimiento</label><input type="date" name="proximo_seguimiento"></div>
         <div class="full"><label>Vendedor que lo atiende</label><select name="vendedor"></select></div>
+        <div class="full"><label>¿Qué compró? <small>(toca los productos)</small></label><div class="checks" id="productos"></div></div>
+        <div class="full"><label>Cantidad del pedido <small>(ej. 20 bultos de Rápido y 10 de Bilo)</small></label><input name="volumen"></div>
         <div class="full"><label>Notas de la venta</label><textarea name="notas_venta" placeholder="Qué se habló, precios enviados, acuerdos, por qué no compró…"></textarea></div>
       </div>
       <div class="pie">
@@ -501,19 +503,18 @@ function render(){
       <div class="top">
         <div>
           <h3>${esc(l.negocio)}</h3>
-          <div class="sub">${esc(l.contacto||'Sin nombre de contacto')} · Cargado ${fechaBonita(l.fecha_registro)}${l.cargado_por?' por '+esc(l.cargado_por):''}</div>
+          <div class="sub">${esc(l.contacto||'Sin nombre de contacto')} · Registrado por Marketing el ${fechaBonita(l.fecha_registro)}</div>
         </div>
         <div class="etqs">${l.red?`<span class="red red-${esc(l.red)}">${esc(l.red)}</span>`:''}${l.tipo?`<span class="badge">${esc(l.tipo)}</span>`:''}</div>
       </div>
       <div class="meta">
         ${l.telefono?`<span class="tel">📞 ${esc(l.telefono)}</span>`:''}
         ${l.estado||l.ciudad?`<span>📍 ${esc([l.ciudad,l.estado].filter(Boolean).join(', '))}</span>`:''}
-        ${prods.length?`<span class="prods">${prods.map(x=>LOGOS[x]?`<img src="${LOGOS[x]}" alt="${esc(x)}" title="${esc(x)}">`:`<span>${esc(x)}</span>`).join('')}</span>`:''}
-        ${l.volumen?`<span>📦 ${esc(l.volumen)}</span>`:''}
         ${l.vendedor ? `<span class="asignado">Atiende: ${esc(l.vendedor)}</span>`
           : (zona.length ? `<span class="asignado">Zona de: ${esc(zona.join(', '))}</span>` : (l.estado?`<span class="asignado sin">Sin vendedor para ${esc(l.estado)}</span>`:''))}
       </div>
       ${l.notas?`<div class="nota mkt"><b>Nota de marketing</b>${esc(l.notas)}</div>`:''}
+      ${prods.length||l.volumen?`<div class="nota vta compro"><b>Compró</b>${prods.length?`<span class="prods">${prods.map(x=>LOGOS[x]?`<img src="${LOGOS[x]}" alt="${esc(x)}" title="${esc(x)}">`:`<span>${esc(x)}</span>`).join('')}</span>`:''}${l.volumen?`<div>📦 ${esc(l.volumen)}</div>`:''}</div>`:''}
       ${l.notas_venta?`<div class="nota vta"><b>Seguimiento de ventas</b>${esc(l.notas_venta)}</div>`:''}
       <div class="acciones">
         ${tel?`<a class="btn btn-llamar btn-sm" href="${tel}">📞 Llamar</a>`:''}
@@ -538,13 +539,11 @@ function verTab(t){
 }
 
 /* ---------- formulario de marketing ---------- */
-const CAMPOS = ['negocio','contacto','telefono','tipo','red','estado','ciudad','volumen','cargado_por','notas'];
+const CAMPOS = ['negocio','contacto','telefono','tipo','red','estado','ciudad','notas'];
 function llenarForm(l){
   const f = $('form'); f.reset();
   f.id.value = l.id||'';
   CAMPOS.forEach(k => { if(f[k]) f[k].value = l[k] || ''; });
-  const prods = String(l.productos||'').split(',').map(s=>s.trim());
-  document.querySelectorAll('#productos input').forEach(c => c.checked = prods.includes(c.value));
   avisoZona();
 }
 function avisoZona(){
@@ -553,7 +552,7 @@ function avisoZona(){
 }
 function nuevo(){
   if(rol!=='marketing') return;
-  llenarForm({cargado_por: ls.get('deliCargadoPor')});
+  llenarForm({});
   $('formTitulo').textContent = 'Registrar prospecto';
   $('btnGuardar').textContent = 'Guardar prospecto';
   verTab('form'); $('form').negocio.focus();
@@ -569,8 +568,6 @@ async function guardar(ev){
   ev.preventDefault();
   const f = $('form'), btn = $('btnGuardar'), id = f.id.value;
   const data = {}; CAMPOS.forEach(k => data[k] = f[k].value.trim());
-  data.productos = [...document.querySelectorAll('#productos input:checked')].map(c=>c.value).join(', ');
-  if(data.cargado_por) ls.set('deliCargadoPor', data.cargado_por);
   btn.disabled = true; btn.textContent = 'Guardando…';
   try{
     await apiPost(id ? {action:'update', id, data} : {action:'add', data});
@@ -608,6 +605,9 @@ function seguimiento(id){
   f.estatus.value = l.estatus || 'Nuevo';
   f.proximo_seguimiento.value = l.proximo_seguimiento || '';
   f.notas_venta.value = l.notas_venta || '';
+  f.volumen.value = l.volumen || '';
+  const prods = String(l.productos||'').split(',').map(s=>s.trim());
+  document.querySelectorAll('#productos input').forEach(c => c.checked = prods.includes(c.value));
   const zona = vendedoresDe(l.estado);
   const nombres = [...new Set([...zona, ...vendedores.map(v=>v.nombre)])];
   if(l.vendedor && !nombres.includes(l.vendedor)) nombres.unshift(l.vendedor);
@@ -626,7 +626,8 @@ function seguimiento(id){
 async function guardarSeg(ev){
   ev.preventDefault();
   const f = $('formSeg'), btn = $('btnSeg');
-  const data = { estatus:f.estatus.value, proximo_seguimiento:f.proximo_seguimiento.value, notas_venta:f.notas_venta.value.trim(), vendedor:f.vendedor.value };
+  const data = { estatus:f.estatus.value, proximo_seguimiento:f.proximo_seguimiento.value, notas_venta:f.notas_venta.value.trim(), vendedor:f.vendedor.value,
+    productos:[...document.querySelectorAll('#productos input:checked')].map(c=>c.value).join(', '), volumen:f.volumen.value.trim() };
   btn.disabled = true; btn.textContent = 'Guardando…';
   try{ await apiPost({action:'update', id:f.id.value, data}); toast('Seguimiento guardado'); await cargar(); verTab('lista'); }
   catch(e){ toast('No se pudo guardar: ' + e.message); }
